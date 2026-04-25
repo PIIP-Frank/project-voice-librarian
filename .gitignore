@@ -1,3 +1,5 @@
 **/__pycache__
-src/data/**
-!data/README.md
+src/data/configs/**
+src/data/users/**
+!src/data/configs/default.ini
+.claude

@@ -17,9 +17,9 @@ class Config:
         base = Path("data")
         config_store = base / "configs"
 
-        default_path = Path("default.ini")
+        default_path = config_store / "default.ini"
 
-        (config_store / "stored").mkdir(parents=True, exist_ok=True) 
+        config_store.mkdir(parents=True, exist_ok=True) 
         
         user_path = config_store / "stored" / f"{username}-config.ini"
 
