@@ -1,0 +1,7 @@
+Meeting 4/25/26
+* Search via query. In library & samples. Make component for search
+    * A general screen per word when you search.
+    * Search query shows one response per user per word.
+* Data chunking -> Compression
+* Importing / Exporting to .csv
+* Web Scraper

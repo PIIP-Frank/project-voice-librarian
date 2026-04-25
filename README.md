@@ -9,10 +9,16 @@ Contains two separate views:
 * Chief Librarian: Manage and process the collected data. 
 
 ## Installation
-
-Instructions on how to install the program. Include prerequisites, dependencies, and step-by-step setup.
+```bash
+pip install pyserial
+pip install customtkinter
+```
 
 ## Usage
+```bash
+cd src
+python main.py
+```
 
 Refer to diagrams for program flow.
 

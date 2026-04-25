@@ -63,6 +63,8 @@ class App(customtkinter.CTk):
         self._cfg = Config()
         self._cfg.load(username)
 
+
+        # TODO: singleton the state?
         role = self._manifest.get_role(username)
         menu: MainMenuFrame = self._handler.get_screen("main_menu")
         menu.set_user(username, role)
