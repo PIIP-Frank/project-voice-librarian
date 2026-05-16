@@ -1,0 +1,12 @@
+{
+  "admin": {
+    "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "role": "Chief Librarian",
+    "preferred_lang": "en"
+  },
+  "replacement_admin": {
+    "password": "cf80cd8aed482d5d1527d7dc72fceff84e6326592848447d2dc0b0e87dfc9a90",
+    "role": "Student Librarian",
+    "preferred_lang": "en"
+  }
+}

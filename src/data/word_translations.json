@@ -1,0 +1,42 @@
+{
+  "hello": {
+    "en": "hello",
+    "ig": "nnọọ",
+    "yo": "pẹlẹ o",
+    "ha": "sannu",
+    "tw": "hello",
+    "pg": "hello"
+  },
+  "may": {
+    "en": "may",
+    "ig": "nwere ike",
+    "yo": "le",
+    "ha": "mai yiwuwa",
+    "tw": "bɛyɛɛ",
+    "pg": "may"
+  },
+  "test": {
+    "en": "test",
+    "ig": "nwale",
+    "yo": "idanwo",
+    "ha": "gwadawa",
+    "tw": "test",
+    "pg": "test"
+  },
+  "this": {
+    "en": "this",
+    "ig": "nke a",
+    "yo": "eyi",
+    "ha": "wannan",
+    "tw": "ɛnneɛ",
+    "pg": "dis"
+  },
+  "work": {
+    "en": "work",
+    "ig": "ọrụ",
+    "yo": "ṣiṣẹ",
+    "ha": "aiki",
+    "tw": "adwuma",
+    "pg": "work"
+  }
+}

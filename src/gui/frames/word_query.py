@@ -1,362 +1,455 @@
 import customtkinter
-import winsound
+import pygame
 from pathlib import Path
 from tkinter import messagebox
-
 from store.prompts import PromptSet, load_prompt_set, list_prompt_sets
 from store.progress import UserProgress
 from store.recordings import RecordingStore
+from store.word_translations import WordTranslations, SUPPORTED_LANGUAGES
+
+if not pygame.mixer.get_init():
+    pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
 
 
 class WordQueryFrame(customtkinter.CTkFrame):
+    """Dictionary-style word list with search, pagination and word detail view."""
 
     def __init__(self, parent, handler):
-        super().__init__(parent, fg_color="transparent")
+        super().__init__(parent, fg_color="#F0F4F8")
         self.handler = handler
 
         self._username: str = ""
         self._prompt_set: PromptSet | None = None
-        self._progress: UserProgress | None = None
-        self._recordings: RecordingStore | None = None
-        self._sample_index: int = 0
-        self._is_playing: bool = False
+        self._all_words: list[str] = []
+        self._filtered_words: list[str] = []
+        self._words_with_audio: set[str] = set()
+        self._current_start_index: int = 0
+        self._batch_size: int = 100
+        self._is_loading: bool = False
+        self._search_query: str = ""
+        self._detail_window: "WordDetailWindow" | None = None
 
         self._build()
 
     def _build(self):
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=0)
+        self.grid_rowconfigure(3, weight=0)
 
-        card = customtkinter.CTkFrame(self)
-        card.grid(row=1, column=0, padx=30, pady=24, sticky="n")
-        card.grid_columnconfigure(0, weight=1)
+        header_frame = customtkinter.CTkFrame(self, fg_color="transparent", height=50)
+        header_frame.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="ew")
+        header_frame.grid_columnconfigure(1, weight=1)
+
+        self.back_btn = customtkinter.CTkButton(
+            header_frame, text="← Back", width=60, font=customtkinter.CTkFont(size=12),
+            fg_color="transparent", text_color="#1A1A1A", hover_color="#E0E5EA",
+            command=self._back
+        )
+        self.back_btn.grid(row=0, column=0, padx=(0, 10), sticky="w")
 
         customtkinter.CTkLabel(
-            card, text="Word Query",
-            font=customtkinter.CTkFont(size=18, weight="bold"),
-        ).grid(row=0, column=0, padx=30, pady=(20, 4))
+            header_frame, text="📖 Word Library", font=customtkinter.CTkFont(size=18, weight="bold"),
+            text_color="#1A1A1A"
+        ).grid(row=0, column=1, sticky="w")
 
-        self._set_lbl = customtkinter.CTkLabel(
-            card, text="", text_color="gray",
-            font=customtkinter.CTkFont(size=11),
+        self._info_label = customtkinter.CTkLabel(
+            header_frame, text="", text_color="gray", font=customtkinter.CTkFont(size=11), anchor="e"
         )
-        self._set_lbl.grid(row=1, column=0, padx=30, pady=(0, 12))
+        self._info_label.grid(row=0, column=2, padx=10, sticky="e")
 
-        # ── Word display ─────────────────────────────────────────────────────
-        word_panel = customtkinter.CTkFrame(card)
-        word_panel.grid(row=2, column=0, padx=20, pady=(0, 12), sticky="ew")
-        word_panel.grid_columnconfigure(1, weight=1)
+        search_frame = customtkinter.CTkFrame(self, fg_color="transparent")
+        search_frame.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
+        search_frame.grid_columnconfigure(0, weight=1)
+
+        self.search_entry = customtkinter.CTkEntry(
+            search_frame, placeholder_text="🔍 Search for a word...", font=customtkinter.CTkFont(size=13),
+            height=40, corner_radius=20, border_color="#D0D5DC", fg_color="white", text_color="#1A1A1A"
+        )
+        self.search_entry.grid(row=0, column=0, padx=(0, 10), sticky="ew")
+
+        self.clear_search_btn = customtkinter.CTkButton(
+            search_frame, text="✖", width=40, height=40, font=customtkinter.CTkFont(size=14),
+            fg_color="transparent", text_color="#9CA3AF", hover_color="#E0E5EA", corner_radius=20,
+            command=self._clear_search
+        )
+        self.clear_search_btn.grid(row=0, column=1)
+        self.clear_search_btn.grid_remove()
+
+        self.search_entry.bind("<KeyRelease>", self._on_search)
+        self.search_entry.bind("<Return>", self._on_search_submit)
+
+        self._words_frame = customtkinter.CTkScrollableFrame(self, fg_color="transparent")
+        self._words_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        self._words_frame.grid_columnconfigure(0, weight=1)
+
+        self._words_frame._parent_canvas.bind_all("<MouseWheel>", self._on_scroll, add="+")
+
+        self._loading_label = customtkinter.CTkLabel(
+            self._words_frame, text="Loading more words...", text_color="gray", font=customtkinter.CTkFont(size=11)
+        )
+        self._no_results_label = customtkinter.CTkLabel(
+            self._words_frame, text="🔍 No words found matching your search",
+            text_color="gray", font=customtkinter.CTkFont(size=14), anchor="center"
+        )
+
+        # Bottom navigation
+        self.bottom_nav = customtkinter.CTkFrame(
+            self, height=50, fg_color="#FFFFFF", corner_radius=0, border_width=1, border_color="#D0D5DC"
+        )
+        self.bottom_nav.grid(row=3, column=0, sticky="ew")
+        self.bottom_nav.grid_propagate(False)
+        for i in range(2):
+            self.bottom_nav.grid_columnconfigure(i, weight=1)
 
         customtkinter.CTkButton(
-            word_panel, text="←", width=40, command=self._prev_word
-        ).grid(row=0, column=0, padx=(10, 6), pady=12)
-
-        self._word_lbl = customtkinter.CTkLabel(
-            word_panel, text="—",
-            font=customtkinter.CTkFont(size=28, weight="bold"),
-        )
-        self._word_lbl.grid(row=0, column=1, padx=4, pady=12, sticky="ew")
+            self.bottom_nav, text="🏠 Home", font=customtkinter.CTkFont(size=12),
+            fg_color="transparent", text_color="#1A1A1A", hover_color="#E0E5EA",
+            command=lambda: self.handler.show("main_menu")
+        ).grid(row=0, column=0, padx=5, pady=8, sticky="ew")
 
         customtkinter.CTkButton(
-            word_panel, text="→", width=40, command=self._next_word
-        ).grid(row=0, column=2, padx=(6, 10), pady=12)
+            self.bottom_nav, text="← Back", font=customtkinter.CTkFont(size=12),
+            fg_color="transparent", text_color="#1A1A1A", hover_color="#E0E5EA",
+            command=self._back
+        ).grid(row=0, column=1, padx=5, pady=8, sticky="ew")
 
-        self._word_meta_lbl = customtkinter.CTkLabel(
-            word_panel, text="", text_color="gray",
-            font=customtkinter.CTkFont(size=11),
+    # ---------- Search ----------
+    def _on_search(self, event=None):
+        self._search_query = self.search_entry.get().strip().lower()
+        if self._search_query:
+            self.clear_search_btn.grid()
+        else:
+            self.clear_search_btn.grid_remove()
+        self._perform_search()
+
+    def _on_search_submit(self, event=None):
+        self._perform_search()
+
+    def _perform_search(self):
+        if not self._search_query:
+            self._filtered_words = self._all_words.copy()
+        else:
+            self._filtered_words = [w for w in self._all_words if self._search_query in w.lower()]
+        self._current_start_index = 0
+        self._clear_word_list()
+        if not self._filtered_words:
+            self._no_results_label.grid(row=0, column=0, padx=20, pady=40, sticky="ew")
+            self._info_label.configure(text=f"0 results for '{self._search_query}'")
+        else:
+            self._no_results_label.grid_remove()
+            self._load_more_words()
+            total = len(self._filtered_words)
+            matched_audio = sum(1 for w in self._filtered_words if w in self._words_with_audio)
+            self._info_label.configure(text=f"{total} results for '{self._search_query}' | {matched_audio} have audio")
+
+    def _clear_search(self):
+        self.search_entry.delete(0, "end")
+        self._search_query = ""
+        self.clear_search_btn.grid_remove()
+        self._perform_search()
+
+    # ---------- Word list ----------
+    def _load_more_words(self):
+        if self._is_loading:
+            return
+        end = self._current_start_index + self._batch_size
+        if self._current_start_index >= len(self._filtered_words):
+            return
+        self._is_loading = True
+        self._loading_label.grid_forget()
+        for w in self._filtered_words[self._current_start_index:end]:
+            self._add_word_button(w)
+        self._current_start_index = end
+        if self._current_start_index < len(self._filtered_words):
+            self._loading_label.grid(row=len(self._words_frame.winfo_children()), column=0, padx=10, pady=10, sticky="ew")
+        self._is_loading = False
+
+    def _add_word_button(self, word: str):
+        has_audio = word in self._words_with_audio
+        frame = customtkinter.CTkFrame(self._words_frame, fg_color="transparent")
+        frame.grid_columnconfigure(0, weight=1)
+        btn = customtkinter.CTkButton(
+            frame, text=f"🔊 {word}" if has_audio else f"📄 {word}", font=customtkinter.CTkFont(size=13),
+            fg_color="#2A6BAA" if has_audio else "#9CA3AF",
+            hover_color="#3A7BBA" if has_audio else "#B0B5BC",
+            anchor="w", height=40, corner_radius=8,
+            command=lambda w=word: self._open_word_detail(w)
         )
-        self._word_meta_lbl.grid(row=1, column=0, columnspan=3, padx=10, pady=(0, 10))
+        btn.grid(row=0, column=0, padx=5, pady=3, sticky="ew")
+        frame.button = btn
+        frame.word = word
+        frame.grid(row=len(self._words_frame.winfo_children()), column=0, padx=10, pady=2, sticky="ew")
 
-        # ── Playback Manager ─────────────────────────────────────────────────
-        pb = customtkinter.CTkFrame(card)
-        pb.grid(row=3, column=0, padx=20, pady=(0, 12), sticky="ew")
-        pb.grid_columnconfigure(0, weight=1)
+    def _clear_word_list(self):
+        for w in self._words_frame.winfo_children():
+            if w not in (self._loading_label, self._no_results_label):
+                w.destroy()
+        self._loading_label.grid_forget()
+        self._no_results_label.grid_remove()
 
-        customtkinter.CTkLabel(
-            pb, text="Playback Manager",
-            font=customtkinter.CTkFont(size=13, weight="bold"),
-        ).grid(row=0, column=0, padx=14, pady=(10, 4), sticky="w")
+    def _on_scroll(self, event):
+        canvas = self._words_frame._parent_canvas
+        if canvas.yview()[1] >= 0.95:
+            self._load_more_words()
 
-        sample_row = customtkinter.CTkFrame(pb, fg_color="transparent")
-        sample_row.grid(row=1, column=0, padx=14, pady=(2, 6), sticky="ew")
-        sample_row.grid_columnconfigure(1, weight=1)
-
-        customtkinter.CTkButton(
-            sample_row, text="◀", width=36, command=self._prev_sample
-        ).grid(row=0, column=0, padx=(0, 8))
-
-        self._sample_lbl = customtkinter.CTkLabel(
-            sample_row, text="No samples",
-            font=customtkinter.CTkFont(size=12, weight="bold"),
-        )
-        self._sample_lbl.grid(row=0, column=1, sticky="ew")
-
-        customtkinter.CTkButton(
-            sample_row, text="▶", width=36, command=self._next_sample
-        ).grid(row=0, column=2, padx=(8, 0))
-
-        self._length_lbl = customtkinter.CTkLabel(
-            pb, text="Length: —", text_color="gray",
-            font=customtkinter.CTkFont(size=11),
-        )
-        self._length_lbl.grid(row=2, column=0, padx=14, pady=(2, 0), sticky="w")
-
-        self._meta_lbl = customtkinter.CTkLabel(
-            pb, text="Sample Rate: —    Channels: —    Size: —",
-            text_color="gray",
-            font=customtkinter.CTkFont(size=11),
-        )
-        self._meta_lbl.grid(row=3, column=0, padx=14, pady=(0, 0), sticky="w")
-
-        self._file_lbl = customtkinter.CTkLabel(
-            pb, text="File: —", text_color="gray",
-            font=customtkinter.CTkFont(size=10),
-        )
-        self._file_lbl.grid(row=4, column=0, padx=14, pady=(0, 4), sticky="w")
-
-        ctrl_row = customtkinter.CTkFrame(pb, fg_color="transparent")
-        ctrl_row.grid(row=5, column=0, padx=14, pady=(6, 12))
-
-        self._play_btn = customtkinter.CTkButton(
-            ctrl_row, text="▶ Play", width=100, command=self._play
-        )
-        self._play_btn.grid(row=0, column=0, padx=(0, 6))
-
-        self._stop_btn = customtkinter.CTkButton(
-            ctrl_row, text="■ Stop", width=100,
-            fg_color="gray30", hover_color="gray20", command=self._stop
-        )
-        self._stop_btn.grid(row=0, column=1, padx=6)
-
-        self._delete_btn = customtkinter.CTkButton(
-            ctrl_row, text="🗑 Delete", width=100,
-            fg_color="#B33A3A", hover_color="#8C2A2A",
-            command=self._delete_current_sample,
-        )
-        self._delete_btn.grid(row=0, column=2, padx=(6, 0))
-
-        self._status_lbl = customtkinter.CTkLabel(
-            card, text="", text_color="gray",
-            font=customtkinter.CTkFont(size=11),
-        )
-        self._status_lbl.grid(row=4, column=0, padx=20, pady=(0, 6))
-
-        customtkinter.CTkButton(
-            card, text="Back", width=120,
-            fg_color="gray30", hover_color="gray20",
-            command=self._back,
-        ).grid(row=5, column=0, padx=20, pady=(4, 20))
-
-    # ── Public API ───────────────────────────────────────────────────────────
-
-    def set_user(self, username: str) -> None:
+    # ---------- Data ----------
+    def set_user(self, username: str):
         self._username = username
         self._progress = UserProgress(username)
         self._recordings = RecordingStore(username)
-
         sets = list_prompt_sets()
         target = self._progress.prompt_set if self._progress.prompt_set in sets else (sets[0] if sets else None)
-
         if target is None:
-            self._prompt_set = None
-            self._set_lbl.configure(text="No prompt sets available in src/prompts/")
-            self._word_lbl.configure(text="—")
-            self._word_meta_lbl.configure(text="")
-            self._refresh_playback()
+            self._info_label.configure(text="No prompt sets available")
             return
-
         self._prompt_set = load_prompt_set(target)
         self._progress.prompt_set = target
-        self._set_lbl.configure(
-            text=f"Prompt set: {target}  ·  {len(self._prompt_set)} word(s)"
-        )
-        self._sample_index = 0
-        self._refresh_word()
+        self._all_words = sorted([w for w in self._prompt_set.words if w])
+        self._refresh_audio_status()
+        self._search_query = ""
+        self.search_entry.delete(0, "end")
+        self.clear_search_btn.grid_remove()
+        self._filtered_words = self._all_words.copy()
+        self._current_start_index = 0
+        self._clear_word_list()
+        self._load_more_words()
+        self._info_label.configure(text=f"{len(self._all_words)} words total | {len(self._words_with_audio)} have audio")
 
-    def refresh(self) -> None:
-        """Re-read recordings from disk; call when re-entering the screen."""
+    def refresh(self):
         if self._username:
-            self._refresh_word()
+            self._refresh_audio_status()
+            self._refresh_word_list_colors()
 
-    # ── Word navigation ──────────────────────────────────────────────────────
-
-    def _prev_word(self) -> None:
-        if not self._prompt_set or not self._progress:
+    def _refresh_audio_status(self):
+        if not self._recordings:
             return
-        idx = max(0, self._progress.current_index - 1)
-        if idx == self._progress.current_index:
-            return
-        self._stop()
-        self._progress.current_index = idx
-        self._sample_index = 0
-        self._refresh_word()
+        self._words_with_audio.clear()
+        for w in self._all_words:
+            if self._recordings.sample_count(w) > 0:
+                self._words_with_audio.add(w)
 
-    def _next_word(self) -> None:
-        if not self._prompt_set or not self._progress:
-            return
-        idx = min(len(self._prompt_set) - 1, self._progress.current_index + 1)
-        if idx == self._progress.current_index:
-            return
-        self._stop()
-        self._progress.current_index = idx
-        self._sample_index = 0
-        self._refresh_word()
+    def _refresh_word_list_colors(self):
+        for widget in self._words_frame.winfo_children():
+            if widget not in (self._loading_label, self._no_results_label) and hasattr(widget, 'button'):
+                word = widget.word
+                has_audio = word in self._words_with_audio
+                widget.button.configure(
+                    text=f"🔊 {word}" if has_audio else f"📄 {word}",
+                    fg_color="#2A6BAA" if has_audio else "#9CA3AF",
+                    hover_color="#3A7BBA" if has_audio else "#B0B5BC"
+                )
+        total = len(self._filtered_words) if self._search_query else len(self._all_words)
+        matched = sum(1 for w in self._filtered_words if w in self._words_with_audio)
+        if self._search_query:
+            self._info_label.configure(text=f"{total} results for '{self._search_query}' | {matched} have audio")
+        else:
+            self._info_label.configure(text=f"{total} words total | {matched} have audio")
 
-    def _refresh_word(self) -> None:
-        if not self._prompt_set or not self._progress or not self._recordings:
-            return
-        idx = self._progress.current_index
-        word = self._prompt_set.get(idx) or "—"
-        total = len(self._prompt_set)
-        recorded = self._recordings.sample_count(word)
-        self._progress.set_sample_count(word, recorded)
+    def _open_word_detail(self, word: str):
+        if self._detail_window and self._detail_window.winfo_exists():
+            self._detail_window.destroy()
+        self._detail_window = WordDetailWindow(self, word, self._recordings, self._refresh_audio_status_callback)
 
-        done_txt = "✓ Done" if recorded > 0 else "Not yet recorded"
-        self._word_lbl.configure(text=word)
-        self._word_meta_lbl.configure(
-            text=f"Word {idx + 1} of {total}  ·  {recorded} sample(s)  ·  {done_txt}"
-        )
-        self._refresh_playback()
+    def _refresh_audio_status_callback(self):
+        self._refresh_audio_status()
+        self._refresh_word_list_colors()
 
-    # ── Sample navigation ────────────────────────────────────────────────────
-
-    def _current_samples(self) -> list[Path]:
-        if not self._prompt_set or not self._progress or not self._recordings:
-            return []
-        word = self._prompt_set.get(self._progress.current_index)
-        if not word:
-            return []
-        return self._recordings.list_samples(word)
-
-    def _prev_sample(self) -> None:
-        samples = self._current_samples()
-        if not samples or self._sample_index <= 0:
-            return
-        self._stop()
-        self._sample_index -= 1
-        self._refresh_playback()
-
-    def _next_sample(self) -> None:
-        samples = self._current_samples()
-        if not samples or self._sample_index >= len(samples) - 1:
-            return
-        self._stop()
-        self._sample_index += 1
-        self._refresh_playback()
-
-    def _refresh_playback(self) -> None:
-        samples = self._current_samples()
-        total = len(samples)
-        if total == 0:
-            self._sample_lbl.configure(text="No samples recorded")
-            self._length_lbl.configure(text="Length: —")
-            self._meta_lbl.configure(text="Sample Rate: —    Channels: —    Size: —")
-            self._file_lbl.configure(text="File: —")
-            self._play_btn.configure(state="disabled")
-            self._delete_btn.configure(state="disabled")
-            return
-
-        self._sample_index = max(0, min(self._sample_index, total - 1))
-        path = samples[self._sample_index]
-        info = RecordingStore.clip_info(path)
-
-        self._sample_lbl.configure(text=f"Sample {self._sample_index + 1} of {total}")
-
-        length = info.get("length")
-        self._length_lbl.configure(
-            text=f"Length: {length:.2f} s" if length is not None else "Length: unknown"
-        )
-
-        rate = info.get("sample_rate")
-        chans = info.get("channels")
-        size = info.get("size_bytes")
-        self._meta_lbl.configure(
-            text=(
-                f"Sample Rate: {rate} Hz" if rate else "Sample Rate: —"
-            ) + "    " + (
-                f"Channels: {chans}" if chans else "Channels: —"
-            ) + "    " + (
-                f"Size: {self._fmt_size(size)}" if size else "Size: —"
-            )
-        )
-
-        self._file_lbl.configure(text=f"File: {path.name}")
-        self._play_btn.configure(state="normal")
-        self._delete_btn.configure(state="normal")
-
-    @staticmethod
-    def _fmt_size(n: int) -> str:
-        if n < 1024:
-            return f"{n} B"
-        kb = n / 1024
-        if kb < 1024:
-            return f"{kb:.1f} KB"
-        return f"{kb / 1024:.1f} MB"
-
-    # ── Playback ─────────────────────────────────────────────────────────────
-
-    def _play(self) -> None:
-        samples = self._current_samples()
-        if not samples:
-            return
-        path = samples[self._sample_index]
-        if not path.exists():
-            self._status_lbl.configure(text="File not found.", text_color="#FF5555")
-            return
-        try:
-            winsound.PlaySound(
-                str(path),
-                winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT,
-            )
-            self._is_playing = True
-            self._status_lbl.configure(
-                text=f"Playing: {path.name}", text_color="#4CAF50"
-            )
-        except RuntimeError as e:
-            self._status_lbl.configure(text=f"Playback error: {e}", text_color="#FF5555")
-
-    def _stop(self) -> None:
-        if not self._is_playing:
-            return
-        try:
-            winsound.PlaySound(None, winsound.SND_PURGE)
-        except RuntimeError:
-            pass
-        self._is_playing = False
-        self._status_lbl.configure(text="Stopped.", text_color="gray")
-
-    def _delete_current_sample(self) -> None:
-        if not self._prompt_set or not self._progress or not self._recordings:
-            return
-        samples = self._current_samples()
-        if not samples:
-            return
-        path = samples[self._sample_index]
-        if not messagebox.askyesno(
-            "Delete sample",
-            f"Permanently delete {path.name}?",
-            parent=self,
-        ):
-            return
-
-        self._stop()
-        if not self._recordings.delete_sample(path):
-            self._status_lbl.configure(
-                text=f"Could not delete {path.name}.", text_color="#FF5555"
-            )
-            return
-
-        word = self._prompt_set.get(self._progress.current_index)
-        if word:
-            self._progress.set_sample_count(word, self._recordings.sample_count(word))
-        if self._sample_index > 0:
-            self._sample_index -= 1
-        self._refresh_word()
-        self._status_lbl.configure(
-            text=f"Deleted {path.name}", text_color="#4CAF50"
-        )
-
-    def _back(self) -> None:
-        self._stop()
+    def _back(self):
+        if self._detail_window:
+            self._detail_window.destroy()
         self.handler.show("main_menu")
+
+
+class WordDetailWindow(customtkinter.CTkToplevel):
+    """Full word detail window with play button and translation editor."""
+
+    def __init__(self, parent, word: str, recordings: RecordingStore, refresh_callback):
+        super().__init__(parent)
+        self.word = word
+        self.recordings = recordings
+        self.refresh_callback = refresh_callback
+        self._is_playing = False
+        self._current_sample_index = 0
+        self._samples: list[Path] = []
+        self._translations = WordTranslations()
+        self._edit_mode = False
+
+        self.title(f"🔊 {word}")
+        self.geometry("500x600")
+        self.resizable(False, False)
+        self.grab_set()
+        self.configure(fg_color="#F0F4F8")
+
+        self.update_idletasks()
+        x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (500 // 2)
+        y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (600 // 2)
+        self.geometry(f"+{x}+{y}")
+
+        self._build()
+        self._refresh_samples()
+        self._show_view_mode()
+
+    def _build(self):
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(5, weight=1)
+
+        header = customtkinter.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, padx=30, pady=(30, 10), sticky="ew")
+        header.grid_columnconfigure(0, weight=1)
+        self.word_label = customtkinter.CTkLabel(
+            header, text=self.word, font=customtkinter.CTkFont(size=32, weight="bold"),
+            text_color="#1A1A1A", anchor="center"
+        )
+        self.word_label.grid(row=0, column=0)
+
+        self.status_label = customtkinter.CTkLabel(self, text="", font=customtkinter.CTkFont(size=13), anchor="center")
+        self.status_label.grid(row=1, column=0, padx=30, pady=(0, 15), sticky="n")
+
+        self.play_btn = customtkinter.CTkButton(
+            self, text="▶ PLAY", width=160, height=50,
+            font=customtkinter.CTkFont(size=16, weight="bold"),
+            command=self._play, corner_radius=12
+        )
+        self.play_btn.grid(row=2, column=0, pady=(0, 10))
+
+        self.sample_info = customtkinter.CTkLabel(self, text="", text_color="gray", font=customtkinter.CTkFont(size=11))
+        self.sample_info.grid(row=3, column=0, pady=(0, 15))
+
+        self.trans_label = customtkinter.CTkLabel(self, text="📖 Translations", font=customtkinter.CTkFont(size=14, weight="bold"))
+        self.trans_label.grid(row=4, column=0, padx=30, pady=(5, 5), sticky="w")
+
+        self.trans_frame = customtkinter.CTkScrollableFrame(self, height=250, fg_color="white", border_width=1, border_color="#D0D5DC")
+        self.trans_frame.grid(row=5, column=0, padx=30, pady=(0, 10), sticky="nsew")
+        self.trans_frame.grid_columnconfigure(1, weight=1)
+
+        btn_frame = customtkinter.CTkFrame(self, fg_color="transparent")
+        btn_frame.grid(row=6, column=0, pady=(0, 20))
+        self.edit_btn = customtkinter.CTkButton(btn_frame, text="✏️ Edit Translations", command=self._enter_edit_mode)
+        self.edit_btn.pack(side="left", padx=5)
+
+        self.save_btn = customtkinter.CTkButton(btn_frame, text="💾 Save", fg_color="#2A8C2A", command=self._save_translations)
+        self.save_btn.pack(side="left", padx=5)
+        self.save_btn.pack_forget()
+
+        self.cancel_btn = customtkinter.CTkButton(btn_frame, text="Cancel", fg_color="gray", command=self._show_view_mode)
+        self.cancel_btn.pack(side="left", padx=5)
+        self.cancel_btn.pack_forget()
+
+        close_btn = customtkinter.CTkButton(btn_frame, text="Close", fg_color="#9CA3AF", command=self.destroy)
+        close_btn.pack(side="left", padx=5)
+
+        self._update_ui_state()
+
+    def _show_view_mode(self):
+        self._edit_mode = False
+        self.edit_btn.pack(side="left", padx=5)
+        self.save_btn.pack_forget()
+        self.cancel_btn.pack_forget()
+        self._populate_translations_view()
+        self.trans_frame.configure(fg_color="white", border_width=1)
+
+    def _enter_edit_mode(self):
+        self._edit_mode = True
+        self.edit_btn.pack_forget()
+        self.save_btn.pack(side="left", padx=5)
+        self.cancel_btn.pack(side="left", padx=5)
+        self._populate_translations_edit()
+        self.trans_frame.configure(fg_color="white", border_width=1)
+
+    def _populate_translations_view(self):
+        for w in self.trans_frame.winfo_children():
+            w.destroy()
+        word_data = self._translations.get_word(self.word) or {}
+        row = 0
+        for code, name in SUPPORTED_LANGUAGES.items():
+            translated = word_data.get(code, "—")
+            customtkinter.CTkLabel(self.trans_frame, text=f"{name}:", anchor="e", width=140).grid(row=row, column=0, padx=5, pady=5, sticky="w")
+            customtkinter.CTkLabel(self.trans_frame, text=translated, anchor="w").grid(row=row, column=1, padx=5, pady=5, sticky="w")
+            row += 1
+
+    def _populate_translations_edit(self):
+        for w in self.trans_frame.winfo_children():
+            w.destroy()
+        self.entry_vars = {}
+        word_data = self._translations.get_word(self.word) or {}
+        row = 0
+        for code, name in SUPPORTED_LANGUAGES.items():
+            current = word_data.get(code, "")
+            var = customtkinter.StringVar(value=current)
+            self.entry_vars[code] = var
+            customtkinter.CTkLabel(self.trans_frame, text=f"{name}:", anchor="e", width=140).grid(row=row, column=0, padx=5, pady=5, sticky="w")
+            entry = customtkinter.CTkEntry(self.trans_frame, textvariable=var, width=200)
+            entry.grid(row=row, column=1, padx=5, pady=5, sticky="ew")
+            row += 1
+
+    def _save_translations(self):
+        for code, var in self.entry_vars.items():
+            new_text = var.get().strip()
+            if new_text:
+                self._translations.set_translation(self.word, code, new_text)
+        messagebox.showinfo("Saved", f"Translations for '{self.word}' saved.")
+        self._show_view_mode()
+        if self.refresh_callback:
+            self.refresh_callback()
+
+    def _refresh_samples(self):
+        self._samples = self.recordings.list_samples(self.word)
+        self._samples.sort(key=lambda p: p.stem)
+        self._current_sample_index = 0 if self._samples else -1
+
+    def _update_ui_state(self):
+        self._refresh_samples()
+        if not self._samples:
+            self.status_label.configure(text="⚠️ This word has not been voiced", text_color="#F59E0B")
+            self.play_btn.configure(state="disabled", fg_color="#9CA3AF", text="▶ PLAY")
+            self.sample_info.configure(text="No recordings available")
+        else:
+            count = len(self._samples)
+            self.status_label.configure(text=f"✅ This word has been voiced ({count} sample{'s' if count > 1 else ''})", text_color="#10B981")
+            self.play_btn.configure(state="normal", fg_color="#2A6BAA", text="▶ PLAY")
+            if count > 1:
+                self.sample_info.configure(text=f"Sample {self._current_sample_index + 1} of {count}")
+            else:
+                self.sample_info.configure(text="")
+
+    # ---------- Playback with automatic reset ----------
+    def _play(self):
+        if not self._samples:
+            self._update_ui_state()
+            return
+        if self._current_sample_index >= len(self._samples):
+            self._current_sample_index = 0
+        path = self._samples[self._current_sample_index]
+        if not path.exists():
+            self.status_label.configure(text=f"File not found: {path.name}", text_color="#EF4444")
+            return
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
+            pygame.mixer.music.stop()
+            pygame.mixer.music.load(str(path.absolute()))
+            pygame.mixer.music.play()
+            self.play_btn.configure(text="▶ PLAYING...", state="disabled")
+            self._check_playback_finished()
+        except Exception as e:
+            self.status_label.configure(text=f"Playback error: {e}", text_color="#EF4444")
+
+    def _check_playback_finished(self):
+        if not pygame.mixer.music.get_busy():
+            self.play_btn.configure(text="▶ PLAY", state="normal")
+            if len(self._samples) > 1:
+                self._current_sample_index = (self._current_sample_index + 1) % len(self._samples)
+                self.sample_info.configure(text=f"Sample {self._current_sample_index + 1} of {len(self._samples)}")
+        else:
+            self.after(200, self._check_playback_finished)
+
+    def destroy(self):
+        try:
+            pygame.mixer.music.stop()
+        except:
+            pass
+        if self.refresh_callback:
+            self.refresh_callback()
+        super().destroy()

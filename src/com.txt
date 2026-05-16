@@ -1,0 +1,45 @@
+I want to modify the UI of my project that i was working with someone, but i don't know how to go about it cos he just split the main.py into several py scripts and even many other GUI py scripts.So i have the main.py that calls other py scripts from the folder - Project Voice\src\main.py". The overall organization is done this way:
+
+Main script
+============
+main.py = "C:\Users\Veny\Desktop\Project Voice\src\main.py"
+
+GUI and subfolders/files
+========================
+"C:\Users\Veny\Desktop\Project Voice\src\gui"
+ >"C:\Users\Veny\Desktop\Project Voice\src\gui\__pycache__"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\__pycache__\__init__.cpython-310.pyc"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\__pycache__\guihandler.cpython-310.pyc"
+ >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\__init__.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\add_word.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\create_user.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\login.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\main_menu.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\manage_library.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\reset_password.cpython-310.pyc"
+      >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__pycache__\word_query.cpython-310.pyc"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\__init__.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\add_word.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\create_user.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\login.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\main_menu.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\manage_library.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\reset_password.py"
+   >"C:\Users\Veny\Desktop\Project Voice\src\gui\frames\word_query.py"
+
+ >"C:\Users\Veny\Desktop\Project Voice\src\gui\__init__.py"
+ >"C:\Users\Veny\Desktop\Project Voice\src\gui\guihandler.py"
+
+===========
+Operations
++++++++++++
+All the scripts in the GUI folder definitely controls the UI with its cache, while the main UI calls all linked scripts.
+
+So if i share the GUI scripts (without the cache) in : C:\Users\Veny\Desktop\Project Voice\src\gui\frames\... can you help me modify the GUI?
+
+
+
+
+
