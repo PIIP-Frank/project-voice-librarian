@@ -11,7 +11,9 @@ Contains two separate views:
 ## Installation
 ```bash
 pip install pyserial
+pip install pygame
 pip install customtkinter
+pip install supabase
 ```
 
 ## Usage

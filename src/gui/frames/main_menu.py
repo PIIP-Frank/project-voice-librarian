@@ -11,6 +11,7 @@ _ADMIN_ACTIONS = [
     ("Create User", "create_user"),
     ("Reset Password", "reset_password"),
     ("Manage Library", "manage_library"),
+    ("Export CSV", "export_csv"),
 ]
 
 class MainMenuFrame(customtkinter.CTkFrame):
