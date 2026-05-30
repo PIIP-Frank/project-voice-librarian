@@ -5,3 +5,11 @@ Meeting 4/25/26
 * Data chunking -> Compression
 * Importing / Exporting to .csv
 * Web Scraper
+
+
+CSV exports
+* (Total) Completed Words - Voiced / Unvoiced
+** All words in the library. Don't skip.
+* (Per User) Completed Words - Voiced / Unvoiced
+
+-- have a way of knowing a team's progress.

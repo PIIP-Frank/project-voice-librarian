@@ -3,6 +3,8 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import supabase_sync
+
 
 class UserManifest:
     """Manages user accounts, roles, and preferred language."""
@@ -74,6 +76,9 @@ class UserManifest:
         stored_hash = self._data[username]["password"]
         return stored_hash == self._hash_password(password)
 
+    def get_password_hash(self, username: str) -> Optional[str]:
+        return self._data.get(username, {}).get("password")
+
     def get_role(self, username: str) -> Optional[str]:
         return self._data.get(username, {}).get("role")
 
@@ -87,6 +92,65 @@ class UserManifest:
             raise ValueError(f"User '{username}' does not exist")
         self._data[username]["preferred_lang"] = lang_code
         self._save()
+
+    def get_user_data(self, username: str) -> Optional[dict]:
+        return self._data.get(username)
+
+    def upsert_user(self, username: str, password_hash: str, role: str, preferred_lang: str = "en") -> None:
+        self._data[username] = {
+            "password": password_hash,
+            "role": role,
+            "preferred_lang": preferred_lang,
+        }
+        self._save()
+
+    def sync_users(self) -> bool:
+        try:
+            cloud_users = supabase_sync.fetch_remote_users()
+        except Exception:
+            return False
+
+        for row in cloud_users:
+            username = row.get("username")
+            if not username:
+                continue
+            password = row.get("password", "")
+            role = row.get("role", "Student Librarian")
+            preferred_lang = row.get("preferred_lang", "en")
+            local = self._data.get(username)
+            if local is None:
+                if not password:
+                    continue
+                self._data[username] = {
+                    "password": password,
+                    "role": role,
+                    "preferred_lang": preferred_lang,
+                }
+            else:
+                if password:
+                    local["password"] = password
+                local["role"] = role
+                local["preferred_lang"] = preferred_lang
+
+        self._save()
+
+        payload = []
+        for username in self.list_users():
+            data = self._data.get(username, {})
+            password = data.get("password", "")
+            payload.append({
+                "username": username,
+                "password": password,
+                "role": data.get("role", "Student Librarian"),
+                "preferred_lang": data.get("preferred_lang", "en"),
+            })
+
+        try:
+            supabase_sync.upsert_users_to_cloud(payload)
+        except Exception:
+            return False
+
+        return True
 
     def reset_password(self, username: str, new_password: str) -> None:
         if username not in self._data:

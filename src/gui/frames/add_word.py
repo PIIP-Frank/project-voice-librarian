@@ -323,11 +323,16 @@ class AddWordFrame(customtkinter.CTkFrame):
         except OSError as e:
             self._set_status(f"Save failed: {e}", error=True)
             return
+
+        uploaded = self._recordings.upload_sample(path)
         self._progress.increment(word)
         self._write_cfg("SampleRate", str(self._pending_sample_rate))
         self._clear_pending()
         self._refresh_word()
-        self._set_status(f"Saved {path.name}", error=False)
+        if uploaded:
+            self._set_status(f"Saved {path.name} and uploaded to cloud.", error=False)
+        else:
+            self._set_status(f"Saved {path.name}. Cloud upload failed.", error=True)
 
     # ---------- Config helpers ----------
     def _read_cfg(self, key: str, default: str) -> str:

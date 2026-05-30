@@ -3,3 +3,4 @@ src/data/configs/**
 src/data/users/**
 !src/data/configs/default.ini
 .claude
+.env

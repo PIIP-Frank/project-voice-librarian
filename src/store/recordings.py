@@ -2,6 +2,8 @@ import re
 import wave
 from pathlib import Path
 
+from .supabase_sync import upload_file_to_supabase
+
 _RE_SAMPLE = re.compile(r"^(?P<word>.+)-sample(?P<num>\d+)\.wav$", re.IGNORECASE)
 _ROOT = Path("data") / "recordings"
 
@@ -112,6 +114,13 @@ class RecordingStore:
             w.setframerate(sample_rate)
             w.writeframes(pcm_bytes)
         return path
+
+    def upload_sample(self, path: Path) -> bool:
+        try:
+            upload_file_to_supabase(path, self.username)
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def list_users_with_samples() -> list[str]:

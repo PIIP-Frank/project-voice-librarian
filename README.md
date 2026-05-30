@@ -13,7 +13,6 @@ Contains two separate views:
 pip install pyserial
 pip install pygame
 pip install customtkinter
-pip install supabase
 ```
 
 ## Usage
@@ -21,6 +20,11 @@ pip install supabase
 cd src
 python main.py
 ```
+
+Cloud sync is enabled for this app:
+* Users are synced from Supabase when the app starts.
+* Recorded samples are uploaded to Supabase when saved.
+* Admins can pull all cloud samples from the Manage Library screen.
 
 Refer to diagrams for program flow.
 

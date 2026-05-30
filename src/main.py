@@ -7,6 +7,7 @@ if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
 import customtkinter
+from tkinter import messagebox
 
 from store import Config, UserManifest
 from store.word_translations import SUPPORTED_LANGUAGES
@@ -43,6 +44,7 @@ class App(customtkinter.CTk):
         self._cfg: Config | None = None
         self._manifest = UserManifest()
         first_run = self._manifest.ensure_defaults()
+        self._sync_users_on_start()
 
         self._handler = GuiHandler(self)
 
@@ -166,6 +168,17 @@ class App(customtkinter.CTk):
     def _logout_from_menu(self):
         self._toggle_menu()
         self._on_logout()
+
+    def _sync_users_on_start(self) -> None:
+        try:
+            if not self._manifest.sync_users():
+                raise RuntimeError("Failed to sync users.")
+        except Exception:
+            messagebox.showerror("User Sync Failed", "Failed to sync users.")
+            self.lift()
+            self.attributes("-topmost", True)
+            self.after(100, lambda: self.attributes("-topmost", False))
+            self.focus_force()
 
     def _exit_app(self):
         if self._cfg:
