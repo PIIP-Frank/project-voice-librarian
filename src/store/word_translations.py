@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from . import supabase_sync
+
 # Supported languages: shortcode -> full name
 SUPPORTED_LANGUAGES = {
     "en": "English UK",
@@ -72,3 +74,35 @@ class WordTranslations:
             self._save_data(self)
             return True
         return False
+
+    def sync_with_cloud(self) -> bool:
+        try:
+            remote_rows = supabase_sync.fetch_remote_translations()
+        except Exception:
+            return False
+
+        for row in remote_rows:
+            english_word = row.get("english_word")
+            lang_code = row.get("lang_code")
+            translation = row.get("translation")
+            if not english_word or not lang_code or translation is None:
+                continue
+            self._words_data.setdefault(english_word, {})[lang_code] = translation
+
+        self._save_data(self)
+
+        payload = []
+        for english_word, translations in self._words_data.items():
+            for lang_code, translation in translations.items():
+                payload.append({
+                    "english_word": english_word,
+                    "lang_code": lang_code,
+                    "translation": translation,
+                })
+
+        try:
+            supabase_sync.upsert_translations_to_cloud(payload)
+        except Exception:
+            return False
+
+        return True

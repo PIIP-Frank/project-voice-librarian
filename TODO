@@ -13,3 +13,55 @@ CSV exports
 * (Per User) Completed Words - Voiced / Unvoiced
 
 -- have a way of knowing a team's progress.
+
+
+
+Where data folder is stored locally.
+* %AppData%
+* compile to exe
+* Also needs to work with Android and that OS.
+
+
+maybe record conversations.
+* User-defined "dictionary" with synomyms and meanings. <- This interfaces with word_translations.py. Define contextual usage.
+
+Getting input from someone who has worked on an ASR
+
+OOV words?
+https://milvus.io/ai-quick-reference/how-do-llms-handle-outofvocabulary-words
+
+https://huggingface.co/spaces/hf-audio/open_asr_leaderboard
+
+
+## cloud-fetch promptss.....
+500-1000 common internet words. 
+
+
+Cloud update also needs the filters below.
+
+## conjunctions/prefices/
+and
+is
+are
+you
+was
+
+
+## contractions
+should have
+should've - filter these
+i've - filter these (i.e. these are synomyms)
+i have
+i'd like to
+i would like to
+
+
+users
+- compute/size specs
+
+participants
+- voicing of words
+- delivering translations and contextual meaning of the library.
+- responsible for development of ASR/STT engine
+
+for us we need to worry about training specs.

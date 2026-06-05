@@ -5,7 +5,6 @@ from tkinter import messagebox
 from store.prompts import list_prompt_sets, load_prompt_set
 from store.progress import UserProgress
 from store.recordings import RecordingStore
-from store.supabase_sync import pull_all_samples_to_local
 from store.word_translations import WordTranslations, SUPPORTED_LANGUAGES
 
 if not pygame.mixer.get_init():
@@ -39,7 +38,6 @@ class ManageLibraryFrame(customtkinter.CTkFrame):
         header.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="ew")
         header.grid_columnconfigure(1, weight=1)
         header.grid_columnconfigure(2, weight=0)
-        header.grid_columnconfigure(3, weight=0)
 
         customtkinter.CTkButton(
             header, text="← Back", width=60, font=customtkinter.CTkFont(size=12),
@@ -56,12 +54,6 @@ class ManageLibraryFrame(customtkinter.CTkFrame):
             header, text="", text_color="gray", font=customtkinter.CTkFont(size=12), anchor="e"
         )
         self._info_label.grid(row=0, column=2, padx=10, sticky="e")
-
-        self._cloud_sync_btn = customtkinter.CTkButton(
-            header, text="🌩️ Sync Cloud Samples", width=170,
-            fg_color="#2A6BAA", hover_color="#1F5A91", command=self._sync_cloud_samples
-        )
-        self._cloud_sync_btn.grid(row=0, column=3, padx=(10, 0), sticky="e")
 
         # Filter buttons
         filter_frame = customtkinter.CTkFrame(self, fg_color="transparent")
@@ -245,34 +237,6 @@ class ManageLibraryFrame(customtkinter.CTkFrame):
 
     def _back(self):
         self.handler.show("main_menu")
-
-    def _sync_cloud_samples(self):
-        self._cloud_sync_btn.configure(state="disabled")
-        try:
-            # Upload all local samples to cloud
-            upload_count = 0
-            for username in RecordingStore.list_users_with_samples():
-                store = RecordingStore(username)
-                for entry in store.list_all_samples():
-                    if store.upload_sample(entry.path):
-                        upload_count += 1
-            
-            # Download all cloud samples to local
-            download_count = pull_all_samples_to_local()
-            if download_count > 0:
-                for username in RecordingStore.list_users_with_samples():
-                    store = RecordingStore(username)
-                    for word in store.words_recorded():
-                        progress = UserProgress(username)
-                        progress.set_sample_count(word, store.sample_count(word))
-            
-            self.refresh()
-            total = upload_count + download_count
-            messagebox.showinfo("Cloud Sync", f"Uploaded {upload_count} file(s) and downloaded {download_count} file(s).")
-        except Exception as exc:
-            messagebox.showerror("Cloud Sync Failed", str(exc))
-        finally:
-            self._cloud_sync_btn.configure(state="normal")
 
 
 class WordAdminWindow(customtkinter.CTkToplevel):

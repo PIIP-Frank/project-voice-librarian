@@ -19,6 +19,7 @@ from gui.frames.reset_password import ResetPasswordFrame
 from gui.frames.word_query import WordQueryFrame
 from gui.frames.add_word import AddWordFrame
 from gui.frames.manage_library import ManageLibraryFrame
+from gui.frames.sync_cloud import SyncCloudFrame
 from gui.frames.export_csv import ExportCSVFrame
 
 
@@ -58,6 +59,7 @@ class App(customtkinter.CTk):
         word_query = WordQueryFrame(self, self._handler)
         add_word = AddWordFrame(self, self._handler, lambda: self._cfg)
         manage_library = ManageLibraryFrame(self, self._handler)
+        sync_cloud = SyncCloudFrame(self, self._handler)
         export_csv = ExportCSVFrame(self, self._handler, self._manifest)
 
         self._handler.register("login", login)
@@ -67,6 +69,7 @@ class App(customtkinter.CTk):
         self._handler.register("word_query", word_query)
         self._handler.register("add_word", add_word)
         self._handler.register("manage_library", manage_library)
+        self._handler.register("sync_cloud", sync_cloud)
         self._handler.register("export_csv", export_csv)
 
         self._create_slide_menu()
@@ -89,8 +92,8 @@ class App(customtkinter.CTk):
             ("📖 Word Library", "word_query"),
             ("🎤 Add Word", "add_word"),
             ("📊 Manage Library", "manage_library"),
-            ("� Export CSV", "export_csv"),
-            ("�👤 Create User", "create_user"),
+            ("📈 Export CSV", "export_csv"),
+            ("👤 Create User", "create_user"),
             ("🔑 Reset Password", "reset_password"),
         ]
         for text, screen_name in menu_items:

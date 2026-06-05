@@ -7,6 +7,7 @@ import customtkinter
 from store.progress import UserProgress
 from store.users import UserManifest
 from store.recordings import RecordingStore
+from store.word_translations import WordTranslations, SUPPORTED_LANGUAGES
 
 
 class ExportCSVFrame(customtkinter.CTkFrame):
@@ -18,6 +19,7 @@ class ExportCSVFrame(customtkinter.CTkFrame):
         self.manifest = manifest
         self._role_var = customtkinter.StringVar(value="All")
         self._type_var = customtkinter.StringVar(value="Completed Words")
+        self._translations = WordTranslations()
         self._status_label = None
         self._summary_label = None
         self._build()
@@ -72,7 +74,7 @@ class ExportCSVFrame(customtkinter.CTkFrame):
 
         self._type_menu = customtkinter.CTkOptionMenu(
             type_frame,
-            values=["Completed Words", "Overall User Stats", "Per-Word Sample Counts"],
+            values=["Completed Words", "Overall User Stats", "Per-Word Sample Counts", "Words & Translations"],
             variable=self._type_var,
             width=260,
             command=lambda _: self._update_summary()
@@ -154,13 +156,21 @@ class ExportCSVFrame(customtkinter.CTkFrame):
             )
             status = "Ready to export overall user stats." if users else "No accounts match the selected filter. Choose a different user type."
 
-        else:  # Per-Word Sample Counts
+        elif export_type == "Per-Word Sample Counts":
             all_words = RecordingStore.list_all_words()
             label_text = (
                 f"Per-word sample export across {len(all_words)} distinct words. "
                 f"Filtered to {selected_role} users. {len(users)} account(s) match the filter."
             )
             status = "Ready to export per-word sample counts." if users and all_words else "No accounts or recorded words available for this export."
+
+        else:  # Words & Translations
+            all_words = self._translations.list_all_words()
+            label_text = (
+                f"Export {len(all_words)} word(s) with translations across {len(SUPPORTED_LANGUAGES)} languages. "
+                "This export is global and ignores the user type filter."
+            )
+            status = "Ready to export words and translations." if all_words else "No translations available to export."
 
         self._summary_label.configure(text=label_text)
         self._status_label.configure(text=status)
@@ -242,7 +252,7 @@ class ExportCSVFrame(customtkinter.CTkFrame):
                 initialfile=f"user_stats_{selected_role.replace(' ', '_').lower()}.csv"
             )
 
-        else:  # Per-Word Sample Counts
+        elif export_type == "Per-Word Sample Counts":
             all_words = RecordingStore.list_all_words()
             if not all_words:
                 messagebox.showinfo(title="No words", message="No recorded words found in the system.")
@@ -270,6 +280,25 @@ class ExportCSVFrame(customtkinter.CTkFrame):
                 filetypes=[("CSV files", "*.csv"), ("All files", "*")],
                 initialfile=f"per_word_samples_{selected_role.replace(' ', '_').lower()}.csv"
             )
+
+        else:  # Words & Translations
+            all_words = self._translations.list_all_words()
+            if not all_words:
+                messagebox.showinfo(title="No translations", message="No word translations available in the system.")
+                self._status_label.configure(text="No translations available to export.")
+                return
+
+            language_codes = list(SUPPORTED_LANGUAGES.keys())
+            for word in all_words:
+                row = [word] + [self._translations.get_translation(word, code) or "" for code in language_codes]
+                rows.append(row)
+
+            save_path = filedialog.asksaveasfilename(
+                title="Save CSV Export",
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv"), ("All files", "*")],
+                initialfile="word_translations.csv"
+            )
         if not save_path:
             return
 
@@ -296,21 +325,32 @@ class ExportCSVFrame(customtkinter.CTkFrame):
                         "completed_words",
                         "distinct_words_recorded",
                     ])
-                else:
-                    # Per-word header
+                elif export_type == "Per-Word Sample Counts":
                     all_words = RecordingStore.list_all_words()
                     header = ["username", "role", "preferred_language", "prompt_set"] + all_words
+                    writer.writerow(header)
+                else:
+                    language_codes = list(SUPPORTED_LANGUAGES.keys())
+                    header = ["english_word"] + language_codes
                     writer.writerow(header)
 
                 writer.writerows(rows)
 
-            messagebox.showinfo(
-                title="Export Complete",
-                message=f"Exported {len(rows)} completed word entries to:\n{save_path}"
-            )
-            self._status_label.configure(
-                text=f"Export complete: {len(rows)} completed word entries written to {save_path}."
-            )
+            if export_type == "Completed Words":
+                success_message = f"Exported {len(rows)} completed word entries to:\n{save_path}"
+                status_message = f"Export complete: {len(rows)} completed word entries written to {save_path}."
+            elif export_type == "Overall User Stats":
+                success_message = f"Exported {len(rows)} user stat rows to:\n{save_path}"
+                status_message = f"Export complete: {len(rows)} user stat rows written to {save_path}."
+            elif export_type == "Per-Word Sample Counts":
+                success_message = f"Exported {len(rows)} user per-word sample rows to:\n{save_path}"
+                status_message = f"Export complete: {len(rows)} per-word sample rows written to {save_path}."
+            else:
+                success_message = f"Exported {len(rows)} translated words to:\n{save_path}"
+                status_message = f"Export complete: {len(rows)} translated word rows written to {save_path}."
+
+            messagebox.showinfo(title="Export Complete", message=success_message)
+            self._status_label.configure(text=status_message)
         except Exception as exc:
             self._status_label.configure(text="Export failed: unable to write the CSV file.")
             messagebox.showerror(title="Export Failed", message=str(exc))

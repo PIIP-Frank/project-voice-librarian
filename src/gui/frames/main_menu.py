@@ -11,6 +11,7 @@ _ADMIN_ACTIONS = [
     ("Create User", "create_user"),
     ("Reset Password", "reset_password"),
     ("Manage Library", "manage_library"),
+    ("Sync Cloud", "sync_cloud"),
     ("Export CSV", "export_csv"),
 ]
 
@@ -143,6 +144,10 @@ class MainMenuFrame(customtkinter.CTkFrame):
                 screen.refresh()
         elif target == "manage_library":
             screen = self.handler.get_screen("manage_library")
+            if screen:
+                screen.refresh()
+        elif target == "sync_cloud":
+            screen = self.handler.get_screen("sync_cloud")
             if screen:
                 screen.refresh()
         self.handler.show(target)

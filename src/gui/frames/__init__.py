@@ -4,6 +4,7 @@ from .login import LoginFrame
 from .main_menu import MainMenuFrame
 from .manage_library import ManageLibraryFrame
 from .reset_password import ResetPasswordFrame
+from .sync_cloud import SyncCloudFrame
 from .word_query import WordQueryFrame
 
 
@@ -14,5 +15,6 @@ __all__ = [
     "MainMenuFrame",
     "ManageLibraryFrame",
     "ResetPasswordFrame",
+    "SyncCloudFrame",
     "WordQueryFrame"
 ]
